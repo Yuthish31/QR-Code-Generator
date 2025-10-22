@@ -1,16 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { QRCodeCanvas } from "qrcode.react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 function FileUploader({ onDataLoaded }) {
   const [fileName, setFileName] = useState("");
   const [previewData, setPreviewData] = useState([]);
   const [allData, setAllData] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const auth = getAuth();
+
+  // Check admin on load
+  useEffect(() => {
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        user.getIdTokenResult().then((idTokenResult) => {
+          setIsAdmin(!!idTokenResult.claims.admin);
+        });
+      } else {
+        setIsAdmin(false);
+      }
+    });
+  }, []);
 
   // Handle Excel file upload
   const handleFileUpload = (e) => {
+    if (!isAdmin) {
+      alert("Only admins can upload files!");
+      return;
+    }
+
     const file = e.target.files[0];
     if (!file) return;
 
@@ -67,6 +89,10 @@ function FileUploader({ onDataLoaded }) {
     saveAs(content, "All_QRCodes.zip");
   };
 
+  if (!isAdmin) {
+    return <p style={{ textAlign: "center", marginTop: "50px" }}>You must be an admin to upload and generate QR codes.</p>;
+  }
+
   return (
     <div style={styles.container}>
       <h2>📂 Upload Excel File</h2>
@@ -115,7 +141,8 @@ function FileUploader({ onDataLoaded }) {
           </button>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "20px" }}>
             {allData.map((row, index) => {
-              const qrValue = `https://yourwebsite.com/system/${row.System}`;
+              // Dynamic live URL
+              const qrValue = `https://YOUR_NETLIFY_SITE_URL/system/${row.System}`;
               return (
                 <div
                   key={index}
@@ -124,13 +151,15 @@ function FileUploader({ onDataLoaded }) {
                     border: "1px solid #ddd",
                     padding: "10px",
                     borderRadius: "8px",
-                    width: "150px",
+                    width: "160px",
                   }}
                 >
                   <QRCodeCanvas id={`qr-${index}`} value={qrValue} size={120} />
                   <p style={{ marginTop: "8px" }}>
                     {row.System || `System ${index + 1}`}
                   </p>
+                  <p><b>Motherboard S.N:</b> {row.MotherboardSN || "N/A"}</p>
+                  <p><b>Monitor S.N:</b> {row.MonitorSN || "N/A"}</p>
                   <button onClick={() => downloadQRCode(index)}>Download QR</button>
                 </div>
               );
