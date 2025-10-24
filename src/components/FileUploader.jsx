@@ -4,42 +4,44 @@ import { QRCodeCanvas } from "qrcode.react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, addDoc } from "firebase/firestore";
 
 function FileUploader({ onDataLoaded }) {
   const [fileName, setFileName] = useState("");
   const [previewData, setPreviewData] = useState([]);
   const [allData, setAllData] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   const auth = getAuth();
+  const db = getFirestore();
 
-  // Check admin on load
+  // Track logged-in user
   useEffect(() => {
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        user.getIdTokenResult().then((idTokenResult) => {
-          setIsAdmin(!!idTokenResult.claims.admin);
-        });
-      } else {
-        setIsAdmin(false);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
     });
+    return () => unsubscribe();
   }, []);
 
   // Handle Excel file upload
-  const handleFileUpload = (e) => {
-    if (!isAdmin) {
-      alert("Only admins can upload files!");
-      return;
-    }
-
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    if (!user) {
+      alert("You must be logged in to upload files.");
+      return;
+    }
+
+    const username = localStorage.getItem("username") || "Unknown User";
+    const userUid = localStorage.getItem("uid") || user.uid;
+
     setFileName(file.name);
+    setUploading(true);
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const data = new Uint8Array(event.target.result);
       const workbook = XLSX.read(data, { type: "array" });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -50,28 +52,50 @@ function FileUploader({ onDataLoaded }) {
         Object.values(row).some((val) => val && val.toString().trim() !== "")
       );
 
-      // Optional: skip header text rows
-      if (jsonData.length > 0 && Object.keys(jsonData[0]).length < 2) {
-        jsonData = jsonData.slice(5);
+      setPreviewData(jsonData.slice(0, 5));
+      const savedData = [];
+
+      try {
+        // Save each row under uploads/{userUid}/files/
+        for (const row of jsonData) {
+          const docRef = await addDoc(collection(db, "uploads", userUid, "files"), {
+            fileName: file.name,
+            uploadedBy: userUid,
+            uploadedByName: username,
+            data: row,
+            uploadedAt: new Date(),
+          });
+
+          savedData.push({ ...row, docId: docRef.id });
+        }
+
+        setAllData(savedData);
+        onDataLoaded && onDataLoaded(savedData, user);
+
+        alert(`✅ ${file.name} uploaded successfully by ${username}`);
+      } catch (error) {
+        console.error("Error saving to Firestore:", error);
+        alert("❌ Failed to save data. Check console for details.");
       }
 
-      setPreviewData(jsonData.slice(0, 5)); // preview first 5 rows
-      setAllData(jsonData); // store all rows for QR codes
-      onDataLoaded && onDataLoaded(jsonData);
+      setUploading(false);
     };
+
     reader.readAsArrayBuffer(file);
   };
 
   // Download individual QR code
-  const downloadQRCode = (id) => {
-    const canvas = document.getElementById(`qr-${id}`);
+  const downloadQRCode = (index) => {
+    const canvas = document.getElementById(`qr-${index}`);
     if (!canvas) return;
+
     const pngUrl = canvas
       .toDataURL("image/png")
       .replace("image/png", "image/octet-stream");
+
     const downloadLink = document.createElement("a");
     downloadLink.href = pngUrl;
-    downloadLink.download = `QR-${allData[id].System || id + 1}.png`;
+    downloadLink.download = `QR-${allData[index].docId}.png`;
     downloadLink.click();
   };
 
@@ -82,26 +106,29 @@ function FileUploader({ onDataLoaded }) {
       const canvas = document.getElementById(`qr-${index}`);
       if (!canvas) return;
       const dataUrl = canvas.toDataURL("image/png");
-      const imgData = dataUrl.split(",")[1]; // base64
-      zip.file(`QR-${row.System || index + 1}.png`, imgData, { base64: true });
+      const imgData = dataUrl.split(",")[1];
+      zip.file(`QR-${row.docId}.png`, imgData, { base64: true });
     });
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "All_QRCodes.zip");
   };
 
-  if (!isAdmin) {
-    return <p style={{ textAlign: "center", marginTop: "50px" }}>You must be an admin to upload and generate QR codes.</p>;
+  if (!user) {
+    return (
+      <p style={{ textAlign: "center", marginTop: "50px" }}>
+        Please log in to upload Excel files and generate QR codes.
+      </p>
+    );
   }
 
   return (
     <div style={styles.container}>
       <h2>📂 Upload Excel File</h2>
+      <p>Logged in as: <b>{localStorage.getItem("username") || user.email}</b></p>
+
       <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
-      {fileName && (
-        <p>
-          Uploaded: <b>{fileName}</b>
-        </p>
-      )}
+      {fileName && <p>Uploaded File: <b>{fileName}</b></p>}
+      {uploading && <p style={{ color: "blue" }}>Uploading and saving data...</p>}
 
       {/* Preview Table */}
       {previewData.length > 0 && (
@@ -111,9 +138,7 @@ function FileUploader({ onDataLoaded }) {
             <thead>
               <tr>
                 {Object.keys(previewData[0]).map((key) => (
-                  <th key={key} style={styles.th}>
-                    {key}
-                  </th>
+                  <th key={key} style={styles.th}>{key}</th>
                 ))}
               </tr>
             </thead>
@@ -121,9 +146,7 @@ function FileUploader({ onDataLoaded }) {
               {previewData.map((row, i) => (
                 <tr key={i}>
                   {Object.values(row).map((value, j) => (
-                    <td key={j} style={styles.td}>
-                      {value}
-                    </td>
+                    <td key={j} style={styles.td}>{value}</td>
                   ))}
                 </tr>
               ))}
@@ -139,10 +162,10 @@ function FileUploader({ onDataLoaded }) {
           <button onClick={downloadAllQRCodes} style={{ marginBottom: "10px" }}>
             Download All QR Codes (ZIP)
           </button>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px" }}>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", justifyContent: "center" }}>
             {allData.map((row, index) => {
-              // Dynamic live URL
-              const qrValue = `https://YOUR_NETLIFY_SITE_URL/system/${row.System}`;
+              const qrValue = `${window.location.origin}/system/${row.docId}`;
               return (
                 <div
                   key={index}
@@ -151,15 +174,14 @@ function FileUploader({ onDataLoaded }) {
                     border: "1px solid #ddd",
                     padding: "10px",
                     borderRadius: "8px",
-                    width: "160px",
+                    width: "180px",
+                    boxShadow: "0 2px 5px rgba(0,0,0,0.1)"
                   }}
                 >
                   <QRCodeCanvas id={`qr-${index}`} value={qrValue} size={120} />
-                  <p style={{ marginTop: "8px" }}>
-                    {row.System || `System ${index + 1}`}
-                  </p>
-                  <p><b>Motherboard S.N:</b> {row.MotherboardSN || "N/A"}</p>
-                  <p><b>Monitor S.N:</b> {row.MonitorSN || "N/A"}</p>
+                  <p style={{ marginTop: "8px", fontWeight: "bold" }}>{row.System || `System ${index + 1}`}</p>
+                  <p><b>Motherboard:</b> {row.MotherboardSN || "N/A"}</p>
+                  <p><b>Monitor:</b> {row.MonitorSN || "N/A"}</p>
                   <button onClick={() => downloadQRCode(index)}>Download QR</button>
                 </div>
               );
@@ -172,28 +194,11 @@ function FileUploader({ onDataLoaded }) {
 }
 
 const styles = {
-  container: {
-    margin: "20px",
-    textAlign: "center",
-  },
-  tableContainer: {
-    marginTop: "20px",
-    overflowX: "auto",
-  },
-  table: {
-    borderCollapse: "collapse",
-    width: "90%",
-    margin: "auto",
-  },
-  th: {
-    border: "1px solid #ddd",
-    padding: "8px",
-    backgroundColor: "#f0f0f0",
-  },
-  td: {
-    border: "1px solid #ddd",
-    padding: "8px",
-  },
+  container: { margin: "20px", textAlign: "center" },
+  tableContainer: { marginTop: "20px", overflowX: "auto" },
+  table: { borderCollapse: "collapse", width: "90%", margin: "auto" },
+  th: { border: "1px solid #ddd", padding: "8px", backgroundColor: "#f0f0f0" },
+  td: { border: "1px solid #ddd", padding: "8px" },
 };
 
 export default FileUploader;

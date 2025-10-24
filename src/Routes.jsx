@@ -1,63 +1,65 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import FileUploader from "./components/FileUploader";
-import SystemPage from "./SystemPage";
-import Auth from "./Auth";
+import SystemPage from "./components/SystemPage";
+import Auth from "./components/Auth";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-const AppRoutes = () => {
+function AppRoutes({ excelData, setExcelData }) {
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   const auth = getAuth();
 
-  // Monitor authentication state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        const tokenResult = await currentUser.getIdTokenResult();
-        setIsAdmin(!!tokenResult.claims.admin);
-      } else {
-        setIsAdmin(false);
-      }
     });
     return () => unsubscribe();
   }, [auth]);
 
+  const handleDataLoaded = (data) => {
+    setExcelData(data);
+  };
+
   return (
     <Routes>
-      {/* Home / FileUploader (Admin only) */}
+      {/* Home Page — All logged-in users can upload Excel & generate QR */}
       <Route
         path="/"
         element={
           user ? (
-            isAdmin ? (
-              <FileUploader />
-            ) : (
-              <p style={{ textAlign: "center", marginTop: "50px" }}>
-                You must be an admin to upload Excel files and generate QR codes.
-              </p>
-            )
+            <>
+              <FileUploader onDataLoaded={handleDataLoaded} />
+              {excelData.length > 0 && (
+                <div style={{ textAlign: "center", marginTop: "20px" }}>
+                  <h3>✅ Excel File Loaded Successfully!</h3>
+                  <p>Total Rows: {excelData.length}</p>
+                </div>
+              )}
+            </>
           ) : (
             <Navigate to="/auth" />
           )
         }
       />
 
-      {/* Authentication */}
+      {/* Authentication Page */}
       <Route path="/auth" element={<Auth />} />
 
-      {/* Dynamic System Page */}
+      {/* System Detail Page — Dynamic Firestore document */}
       <Route path="/system/:id" element={<SystemPage />} />
 
-      {/* Fallback route */}
+      {/* 404 Fallback */}
       <Route
         path="*"
-        element={<p style={{ textAlign: "center", marginTop: "50px" }}>Page not found</p>}
+        element={
+          <p style={{ textAlign: "center", marginTop: "50px" }}>
+            Page not found
+          </p>
+        }
       />
     </Routes>
   );
-};
+}
 
 export default AppRoutes;

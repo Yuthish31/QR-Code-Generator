@@ -1,21 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebaseConfig";
+import { doc, getDoc, getFirestore } from "firebase/firestore";
 
 const SystemPage = () => {
-  const { id } = useParams(); // e.g., PC01
+  const { id } = useParams(); // docId from QR
   const [system, setSystem] = useState(null);
   const [loading, setLoading] = useState(true);
+  const db = getFirestore();
 
   useEffect(() => {
     const fetchSystem = async () => {
       try {
-        const docRef = doc(db, "machines", id); // 'machines' collection
+        const docRef = doc(db, "allFiles", id);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setSystem(docSnap.data());
+          const data = docSnap.data();
+          setSystem(data.data || {}); // actual system data
         } else {
           setSystem({ error: "System not found" });
         }
@@ -28,27 +29,14 @@ const SystemPage = () => {
     };
 
     fetchSystem();
-  }, [id]);
+  }, [id, db]);
 
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <p>Loading system details...</p>
-      </div>
-    );
-  }
-
-  if (system?.error) {
-    return (
-      <div style={styles.container}>
-        <p>{system.error}</p>
-      </div>
-    );
-  }
+  if (loading) return <p style={styles.container}>Loading system details...</p>;
+  if (system?.error) return <p style={styles.container}>{system.error}</p>;
 
   return (
     <div style={styles.container}>
-      <h1>System: {id}</h1>
+      <h1>System Details</h1>
 
       {/* Highlighted fields */}
       <div style={styles.highlight}>
@@ -56,10 +44,10 @@ const SystemPage = () => {
         <p><b>Monitor S.N:</b> {system.MonitorSN || "N/A"}</p>
       </div>
 
-      {/* Other system details dynamically */}
+      {/* Other system details */}
       <div style={styles.details}>
         {Object.entries(system).map(([key, value]) => {
-          if (key === "MotherboardSN" || key === "MonitorSN") return null; // already shown
+          if (key === "MotherboardSN" || key === "MonitorSN") return null;
           return (
             <p key={key}>
               <b>{key}:</b> {value || "N/A"}
@@ -72,12 +60,7 @@ const SystemPage = () => {
 };
 
 const styles = {
-  container: {
-    textAlign: "center",
-    marginTop: "50px",
-    fontFamily: "Arial, sans-serif",
-    padding: "20px",
-  },
+  container: { textAlign: "center", marginTop: "50px", padding: "20px", fontFamily: "Arial, sans-serif" },
   highlight: {
     backgroundColor: "#f9f9f9",
     padding: "15px",
