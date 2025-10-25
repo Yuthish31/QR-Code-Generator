@@ -9,7 +9,7 @@ function App() {
     <Router>
       <div style={{ fontFamily: "Arial, sans-serif" }}>
         <h1 style={{ textAlign: "center", marginTop: "20px" }}>
-          QR System Project
+          QR System for Display Details
         </h1>
         <AppRoutes excelData={excelData} setExcelData={setExcelData} />
       </div>
