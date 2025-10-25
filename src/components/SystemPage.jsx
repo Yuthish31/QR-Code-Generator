@@ -2,24 +2,21 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 
-// Define label and order array (exclude Motherboard S.N and Monitor S.N)
+// 🔹 Define the exact display order with user-friendly labels
 const fieldOrder = [
+  { key: "S.No", label: "Serial No" },
+  { key: "Mother board S.NO", label: "Motherboard S.N" },
+  { key: "Monitor Make& Size", label: "Monitor Make & Size" },
+  { key: "Processor Make& speed", label: "Processor" },
+  { key: "Ram Make &size", label: "RAM" },
+  { key: "SSD Make& Size", label: "SSD Make & Size" },
+  { key: "Mother Board Make", label: "Motherboard Make" },
+  { key: "New Asset ID", label: "Asset ID" },
   { key: "Mouse", label: "Mouse" },
   { key: "Keyboard", label: "Keyboard" },
-  { key: "S.No", label: "Serial No" },
-  { key: "SSD Make& Size", label: "SSD Make & Size" },
-  { key: "Monitor Make& Size", label: "Monitor Make & Size" },
-  { key: "Monitor S.N", exclude: true }, 
-  { key: "New Asset ID", label: "Asset ID" },
-  { key: "Processor Make& speed", label: "Processor" },
-  { key: "Mother Board Make", label: "Motherboard" },
-  { key: "Remarks", label: "Remarks" },
-  { key: "Mother board S.NO", exclude: true }, 
   { key: "Cabinet", label: "Cabinet" },
-  { key: "Ram Make &size", label: "RAM" },
+  { key: "Remarks", label: "Remarks" },
 ];
-
-const displayFields = fieldOrder.filter(f => !f.exclude);
 
 const styles = {
   container: {
@@ -29,7 +26,7 @@ const styles = {
   },
   card: {
     margin: "auto",
-    maxWidth: "480px",
+    maxWidth: "500px",
     background: "#fff",
     borderRadius: "15px",
     boxShadow: "0 6px 32px rgba(74, 58, 255, 0.09)",
@@ -42,24 +39,25 @@ const styles = {
     color: "#4326b6",
     letterSpacing: "1px",
     textAlign: "center",
-    marginBottom: "18px",
+    marginBottom: "22px",
   },
   row: {
     display: "flex",
     justifyContent: "space-between",
-    padding: "12px 0",
+    padding: "10px 0",
     borderBottom: "1px solid #ececec",
     fontSize: "1rem",
   },
   label: {
     fontWeight: 600,
-    color: "#555",
+    color: "#333",
   },
   value: {
     color: "#1a2447",
     fontWeight: 400,
     maxWidth: "60%",
     wordBreak: "break-all",
+    textAlign: "right",
   },
   loader: {
     textAlign: "center",
@@ -81,6 +79,16 @@ const SystemPage = () => {
   const [loading, setLoading] = useState(true);
   const db = getFirestore();
 
+  // 🔹 Helper to get value with flexible key matching
+  const getValue = (data, key) => {
+    if (data[key]) return data[key];
+    // Try variations (handles extra spaces or ampersand spacing)
+    const altKey = Object.keys(data).find(
+      (k) => k.replace(/\s|&/g, "").toLowerCase() === key.replace(/\s|&/g, "").toLowerCase()
+    );
+    return altKey ? data[altKey] : "N/A";
+  };
+
   useEffect(() => {
     const fetchSystem = async () => {
       try {
@@ -88,13 +96,13 @@ const SystemPage = () => {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const docData = docSnap.data();
-          // Flatten if nested under .data
           const data = docData.data ? { ...docData.data } : { ...docData };
           setSystem(data);
         } else {
           setSystem({ error: "System not found" });
         }
-      } catch {
+      } catch (err) {
+        console.error("Error fetching system:", err);
         setSystem({ error: "Failed to fetch system details" });
       } finally {
         setLoading(false);
@@ -103,19 +111,17 @@ const SystemPage = () => {
     fetchSystem();
   }, [id, db]);
 
-  if (loading)
-    return <div style={styles.loader}>Loading system details...</div>;
-  if (system?.error)
-    return <div style={styles.error}>{system.error}</div>;
+  if (loading) return <div style={styles.loader}>Loading system details...</div>;
+  if (system?.error) return <div style={styles.error}>{system.error}</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <h1 style={styles.header}>System Details</h1>
-        {displayFields.map(({ key, label }) => (
+        {fieldOrder.map(({ key, label }) => (
           <div style={styles.row} key={key}>
-            <span style={styles.label}>{label || key}:</span>
-            <span style={styles.value}>{system[key] || "N/A"}</span>
+            <span style={styles.label}>{label}:</span>
+            <span style={styles.value}>{getValue(system, key)}</span>
           </div>
         ))}
       </div>
