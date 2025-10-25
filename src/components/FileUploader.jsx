@@ -16,7 +16,6 @@ function FileUploader({ onDataLoaded }) {
   const auth = getAuth();
   const db = getFirestore();
 
-  // Track logged-in user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -24,17 +23,15 @@ function FileUploader({ onDataLoaded }) {
     return () => unsubscribe();
   }, []);
 
-  // Handle Excel file upload
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     if (!user) {
       alert("You must be logged in to upload files.");
       return;
     }
 
-    const username = localStorage.getItem("username") || "Unknown User";
+    const username = localStorage.getItem("username") || user.displayName || user.email;
     const userUid = localStorage.getItem("uid") || user.uid;
 
     setFileName(file.name);
@@ -47,35 +44,32 @@ function FileUploader({ onDataLoaded }) {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       let jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
 
-      // Filter out empty rows
       jsonData = jsonData.filter((row) =>
         Object.values(row).some((val) => val && val.toString().trim() !== "")
       );
 
       setPreviewData(jsonData.slice(0, 5));
+
       const savedData = [];
 
       try {
-        // Save each row under uploads/{userUid}/files/
         for (const row of jsonData) {
-          const docRef = await addDoc(collection(db, "uploads", userUid, "files"), {
+          const docRef = await addDoc(collection(db, "allFiles"), {
             fileName: file.name,
-            uploadedBy: userUid,
-            uploadedByName: username,
+            uploadedBy: username,
+            userId: userUid,
             data: row,
             uploadedAt: new Date(),
           });
-
           savedData.push({ ...row, docId: docRef.id });
         }
 
         setAllData(savedData);
         onDataLoaded && onDataLoaded(savedData, user);
-
-        alert(`✅ ${file.name} uploaded successfully by ${username}`);
+        alert(`File uploaded and all rows saved successfully by ${username}!`);
       } catch (error) {
         console.error("Error saving to Firestore:", error);
-        alert("❌ Failed to save data. Check console for details.");
+        alert("Failed to save data. Check console for details.");
       }
 
       setUploading(false);
@@ -84,22 +78,16 @@ function FileUploader({ onDataLoaded }) {
     reader.readAsArrayBuffer(file);
   };
 
-  // Download individual QR code
-  const downloadQRCode = (index) => {
-    const canvas = document.getElementById(`qr-${index}`);
+  const downloadQRCode = (id) => {
+    const canvas = document.getElementById(`qr-${id}`);
     if (!canvas) return;
-
-    const pngUrl = canvas
-      .toDataURL("image/png")
-      .replace("image/png", "image/octet-stream");
-
+    const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
     const downloadLink = document.createElement("a");
     downloadLink.href = pngUrl;
-    downloadLink.download = `QR-${allData[index].docId}.png`;
+    downloadLink.download = `QR-${allData[id].docId}.png`;
     downloadLink.click();
   };
 
-  // Download all QR codes as ZIP
   const downloadAllQRCodes = async () => {
     const zip = new JSZip();
     allData.forEach((row, index) => {
@@ -127,10 +115,9 @@ function FileUploader({ onDataLoaded }) {
       <p>Logged in as: <b>{localStorage.getItem("username") || user.email}</b></p>
 
       <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
-      {fileName && <p>Uploaded File: <b>{fileName}</b></p>}
+      {fileName && <p>Uploaded: <b>{fileName}</b></p>}
       {uploading && <p style={{ color: "blue" }}>Uploading and saving data...</p>}
 
-      {/* Preview Table */}
       {previewData.length > 0 && (
         <div style={styles.tableContainer}>
           <h3>Preview (First 5 Rows)</h3>
@@ -155,17 +142,15 @@ function FileUploader({ onDataLoaded }) {
         </div>
       )}
 
-      {/* QR Codes */}
       {allData.length > 0 && (
         <>
           <h3>Generated QR Codes</h3>
           <button onClick={downloadAllQRCodes} style={{ marginBottom: "10px" }}>
             Download All QR Codes (ZIP)
           </button>
-
           <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", justifyContent: "center" }}>
             {allData.map((row, index) => {
-              const qrValue = `${window.location.origin}/system/${row.docId}`;
+              const qrValue = `https://ls-qr-code-generator-3117.netlify.app/system/${row.docId}`;
               return (
                 <div
                   key={index}
@@ -174,14 +159,11 @@ function FileUploader({ onDataLoaded }) {
                     border: "1px solid #ddd",
                     padding: "10px",
                     borderRadius: "8px",
-                    width: "180px",
-                    boxShadow: "0 2px 5px rgba(0,0,0,0.1)"
+                    width: "160px",
                   }}
                 >
                   <QRCodeCanvas id={`qr-${index}`} value={qrValue} size={120} />
                   <p style={{ marginTop: "8px", fontWeight: "bold" }}>{row.System || `System ${index + 1}`}</p>
-                  <p><b>Motherboard:</b> {row.MotherboardSN || "N/A"}</p>
-                  <p><b>Monitor:</b> {row.MonitorSN || "N/A"}</p>
                   <button onClick={() => downloadQRCode(index)}>Download QR</button>
                 </div>
               );
