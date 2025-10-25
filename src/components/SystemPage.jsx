@@ -5,13 +5,13 @@ import { doc, getDoc, getFirestore } from "firebase/firestore";
 // 🔹 Define the exact display order with user-friendly labels
 const fieldOrder = [
   { key: "S.No", label: "Serial No" },
+  { key: "Monitor S.N", label: "Monitor S.N" },
   { key: "Mother board S.NO", label: "Motherboard S.N" },
   { key: "Monitor Make& Size", label: "Monitor Make & Size" },
   { key: "Processor Make& speed", label: "Processor" },
   { key: "Ram Make &size", label: "RAM" },
   { key: "SSD Make& Size", label: "SSD Make & Size" },
   { key: "Mother Board Make", label: "Motherboard Make" },
-  { key: "New Asset ID", label: "Asset ID" },
   { key: "Mouse", label: "Mouse" },
   { key: "Keyboard", label: "Keyboard" },
   { key: "Cabinet", label: "Cabinet" },
