@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import FileUploader from "./components/FileUploader";
 import SystemPage from "./components/SystemPage";
 import Auth from "./components/Auth";
@@ -50,7 +50,10 @@ function AppRoutes({ excelData, setExcelData }) {
           )
         }
       />
-      <Route path="/system/:id" element={<SystemPage />} />
+      {/* --- THIS IS THE CORRECT ROUTE FOR QR SYSTEM DETAILS --- */}
+      <Route path="/system/:userId/:id" element={<SystemPage />} />
+      {/* ------------------------------------------------------- */}
+      {/* 404 fallback */}
       <Route
         path="*"
         element={
