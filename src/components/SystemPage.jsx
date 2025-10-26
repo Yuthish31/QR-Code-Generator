@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 
+// Your fieldOrder is preserved exactly
 const fieldOrder = [
   { key: "S.No", label: "Serial No" },
   { key: "Monitor S.N", label: "Monitor S.N" },
@@ -17,6 +18,7 @@ const fieldOrder = [
   { key: "Remarks", label: "Remarks" },
 ];
 
+// Your styles are preserved exactly
 const styles = {
   container: {
     minHeight: "100vh",
@@ -73,11 +75,13 @@ const styles = {
 };
 
 const SystemPage = () => {
+  // THE KEY UPDATE: useParams must destructure BOTH userId AND id
   const { id, userId } = useParams();
   const [system, setSystem] = useState(null);
   const [loading, setLoading] = useState(true);
   const db = getFirestore();
 
+  // This function allows more forgiving key matching
   const getValue = (data, key) => {
     if (data[key]) return data[key];
     const altKey = Object.keys(data).find(
@@ -89,6 +93,7 @@ const SystemPage = () => {
   useEffect(() => {
     const fetchSystem = async () => {
       try {
+        // THE KEY UPDATE: fetch from users/{userId}/files/{id}
         const docRef = doc(db, "users", userId, "files", id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
