@@ -6,6 +6,14 @@ import { saveAs } from "file-saver";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, addDoc } from "firebase/firestore";
 
+const styles = {
+  container: { margin: "20px", textAlign: "center" },
+  tableContainer: { marginTop: "20px", overflowX: "auto" },
+  table: { borderCollapse: "collapse", width: "90%", margin: "auto" },
+  th: { border: "1px solid #ddd", padding: "8px", backgroundColor: "#f0f0f0" },
+  td: { border: "1px solid #ddd", padding: "8px" },
+};
+
 function FileUploader({ onDataLoaded }) {
   const [fileName, setFileName] = useState("");
   const [previewData, setPreviewData] = useState([]);
@@ -47,21 +55,24 @@ function FileUploader({ onDataLoaded }) {
       jsonData = jsonData.filter((row) =>
         Object.values(row).some((val) => val && val.toString().trim() !== "")
       );
-
       setPreviewData(jsonData.slice(0, 5));
-
       const savedData = [];
 
       try {
-        for (const row of jsonData) {
-          const docRef = await addDoc(collection(db, "allFiles"), {
-            fileName: file.name,
-            uploadedBy: username,
-            userId: userUid,
-            data: row,
-            uploadedAt: new Date(),
-          });
-          savedData.push({ ...row, docId: docRef.id });
+        for (let i = 0; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          const docRef = await addDoc(
+            collection(db, "users", userUid, "files"),
+            {
+              fileName: file.name,
+              uploadedBy: username,
+              userId: userUid,
+              order: i + 1,
+              data: { ...row, "S.No": i + 1 },
+              uploadedAt: new Date(),
+            }
+          );
+          savedData.push({ ...row, docId: docRef.id, "S.No": i + 1 });
         }
 
         setAllData(savedData);
@@ -71,7 +82,6 @@ function FileUploader({ onDataLoaded }) {
         console.error("Error saving to Firestore:", error);
         alert("Failed to save data. Check console for details.");
       }
-
       setUploading(false);
     };
 
@@ -113,7 +123,6 @@ function FileUploader({ onDataLoaded }) {
     <div style={styles.container}>
       <h2>📂 Upload Excel File</h2>
       <p>Logged in as: <b>{localStorage.getItem("username") || user.email}</b></p>
-
       <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} />
       {fileName && <p>Uploaded: <b>{fileName}</b></p>}
       {uploading && <p style={{ color: "blue" }}>Uploading and saving data...</p>}
@@ -150,7 +159,7 @@ function FileUploader({ onDataLoaded }) {
           </button>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", justifyContent: "center" }}>
             {allData.map((row, index) => {
-              const qrValue = `https://ls-qr-code-generator-3117.netlify.app/system/${row.docId}`;
+              const qrValue = `${window.location.origin}/system/${user.uid}/${row.docId}`;
               return (
                 <div
                   key={index}
@@ -174,13 +183,5 @@ function FileUploader({ onDataLoaded }) {
     </div>
   );
 }
-
-const styles = {
-  container: { margin: "20px", textAlign: "center" },
-  tableContainer: { marginTop: "20px", overflowX: "auto" },
-  table: { borderCollapse: "collapse", width: "90%", margin: "auto" },
-  th: { border: "1px solid #ddd", padding: "8px", backgroundColor: "#f0f0f0" },
-  td: { border: "1px solid #ddd", padding: "8px" },
-};
 
 export default FileUploader;

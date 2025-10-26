@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { getFirestore, collection, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
+import React, { useEffect, useState, useRef } from "react";
+import { getFirestore, collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
 
 const styles = {
   container: {
@@ -82,6 +81,57 @@ const styles = {
     fontSize: "1.03rem",
     letterSpacing: ".5px",
     minWidth: "165px",
+  },
+  editModal: {
+    position: "fixed",
+    left: 0, top: 0, right: 0, bottom: 0,
+    zIndex: 9999,
+    background: "rgba(0,0,0,.4)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "auto"
+  },
+  editCard: {
+    background: "#fff",
+    borderRadius: 12,
+    padding: 32,
+    boxShadow: "0 8px 32px #393cc399",
+    maxWidth: 400,
+    width: "95vw",
+    maxHeight: "90vh",
+    overflowY: "auto",
+    position: "relative",
+  },
+  editRow: {
+    marginBottom: 14,
+    display: "flex",
+    flexDirection: "column"
+  },
+  editLabel: {
+    fontWeight: 600, fontSize: "1rem", color: "#4726b6", marginBottom: 4
+  },
+  editInput: {
+    padding: 9, borderRadius: 5, border: "1px solid #92a0d1", fontSize: "1.07rem"
+  },
+  editActions: { marginTop: 24, display: "flex", gap: 10, justifyContent: "flex-end" },
+  editSave: {
+    background: "linear-gradient(90deg,#229bde 63%,#9adbff 99%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "7px",
+    fontWeight: 700,
+    padding: "9px 26px",
+    fontSize: "1.05rem",
+    cursor: "pointer"
+  },
+  editCancel: {
+    background: "#eee",
+    color: "#232452",
+    border: "none",
+    borderRadius: "7px",
+    fontWeight: 700,
+    padding: "9px 24px",
+    fontSize: "1.05rem",
+    cursor: "pointer"
   }
 };
 
@@ -90,17 +140,22 @@ const ManageFiles = () => {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
+  const [editIdx, setEditIdx] = useState(null);
+  const [editRow, setEditRow] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const user = getAuth().currentUser;
   const db = getFirestore();
-  const navigate = useNavigate();
+  const modalRef = useRef(null);
 
   useEffect(() => {
-    const fetchFiles = async () => {
-      if (!user) return;
-      setLoading(true);
-      const q = query(collection(db, "allFiles"), where("userId", "==", user.uid));
-      const querySnapshot = await getDocs(q);
+    if (!user) return;
+    setLoading(true);
+    const q = query(
+      collection(db, "users", user.uid, "files"),
+      orderBy("order", "asc")
+    );
+    getDocs(q).then(querySnapshot => {
       let rows = [];
       querySnapshot.forEach((doc) => {
         rows.push({ ...doc.data(), docId: doc.id });
@@ -109,18 +164,15 @@ const ManageFiles = () => {
       setSelected([]);
       setSelectAll(false);
       setLoading(false);
-    };
-    fetchFiles();
-  }, [user, db]);
+    });
+  }, [user, db, saving]);
 
-  // Handle selecting/unselecting all
   const handleSelectAll = (e) => {
     const checked = e.target.checked;
     setSelectAll(checked);
     setSelected(checked ? files.map(f => f.docId) : []);
   };
 
-  // Handle selecting individual rows
   const handleSelect = (docId) => {
     if (selected.includes(docId)) {
       setSelected(selected.filter(id => id !== docId));
@@ -129,30 +181,57 @@ const ManageFiles = () => {
     }
   };
 
-  // Bulk delete selected
   const handleBulkDelete = async () => {
     if (selected.length === 0) return;
     if (!window.confirm(`Are you sure you want to delete ${selected.length} file(s)?`)) return;
-    await Promise.all(selected.map(docId => deleteDoc(doc(db, "allFiles", docId))));
+    await Promise.all(selected.map(docId =>
+      deleteDoc(doc(db, "users", user.uid, "files", docId))
+    ));
     setFiles(files.filter((f) => !selected.includes(f.docId)));
     setSelected([]);
     setSelectAll(false);
   };
 
-  // Single delete
   const handleDelete = async (docId) => {
     if (!window.confirm("Are you sure you want to delete this file?")) return;
-    await deleteDoc(doc(db, "allFiles", docId));
+    await deleteDoc(doc(db, "users", user.uid, "files", docId));
     setFiles(files.filter((f) => f.docId !== docId));
     setSelected(selected.filter(id => id !== docId));
   };
 
-  const handleEdit = (docId) => {
-    navigate(`/system/${docId}`);
-    // Optionally, add a real editing page or popup for details modification
+  const handleEdit = (idx) => {
+    setEditIdx(idx);
+    setEditRow({ ...(files[idx].data || {}) });
   };
 
-  // Table with S.No (serial number) and checkboxes
+  const closeEdit = () => {
+    setEditIdx(null);
+    setEditRow({});
+  };
+
+  const saveEdit = async () => {
+    if (editIdx == null) return;
+    setSaving(true);
+    const docId = files[editIdx].docId;
+    await updateDoc(doc(db, "users", user.uid, "files", docId), {
+      data: editRow
+    });
+    closeEdit();
+    setSaving(false);
+  };
+
+  // Click outside modal to close
+  useEffect(() => {
+    if (!editIdx) return;
+    const handleClick = (event) => {
+      if (modalRef.current && !modalRef.current.contains(event.target)) {
+        closeEdit();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [editIdx]);
+
   return (
     <div style={styles.container}>
       <div style={styles.title}>Your Uploaded Files</div>
@@ -180,7 +259,7 @@ const ManageFiles = () => {
                   onChange={handleSelectAll}
                 />
               </th>
-              <th style={styles.th}>S.No</th>
+              <th style={styles.th}>System No.</th>
               <th style={styles.th}>Asset ID</th>
               <th style={styles.th}>File Name</th>
               <th style={styles.th}>Uploaded At</th>
@@ -198,7 +277,8 @@ const ManageFiles = () => {
                     onChange={() => handleSelect(row.docId)}
                   />
                 </td>
-                <td style={styles.td}>{idx + 1}</td>
+                {/* Original System No value */}
+                <td style={styles.td}>{row.data?.["S.No"] || idx + 1}</td>
                 <td style={styles.td}>{row.data?.["New Asset ID"] || "N/A"}</td>
                 <td style={styles.td}>{row.fileName || "N/A"}</td>
                 <td style={styles.td}>
@@ -213,7 +293,7 @@ const ManageFiles = () => {
                 <td style={styles.td}>
                   <button
                     style={{ ...styles.actionBtn, ...styles.editBtn }}
-                    onClick={() => handleEdit(row.docId)}
+                    onClick={() => handleEdit(idx)}
                   >
                     Edit
                   </button>
@@ -228,6 +308,31 @@ const ManageFiles = () => {
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* Edit Modal */}
+      {editIdx != null && (
+        <div style={styles.editModal}>
+          <div style={styles.editCard} ref={modalRef}>
+            <h3>Edit Data</h3>
+            {Object.keys(editRow).map((k) => (
+              <div key={k} style={styles.editRow}>
+                <label style={styles.editLabel}>{k}:</label>
+                <input
+                  style={styles.editInput}
+                  value={editRow[k]}
+                  onChange={e =>
+                    setEditRow({ ...editRow, [k]: e.target.value })
+                  }
+                />
+              </div>
+            ))}
+            <div style={styles.editActions}>
+              <button style={styles.editCancel} onClick={closeEdit}>Cancel</button>
+              <button style={styles.editSave} onClick={saveEdit} disabled={saving}>Save</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
