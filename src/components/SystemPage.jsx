@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 
-// Your fieldOrder is preserved exactly
+// 🔹 Define the exact display order with user-friendly labels
 const fieldOrder = [
   { key: "S.No", label: "Serial No" },
   { key: "Monitor S.N", label: "Monitor S.N" },
@@ -18,7 +18,6 @@ const fieldOrder = [
   { key: "Remarks", label: "Remarks" },
 ];
 
-// Your styles are preserved exactly
 const styles = {
   container: {
     minHeight: "100vh",
@@ -75,15 +74,16 @@ const styles = {
 };
 
 const SystemPage = () => {
-  // THE KEY UPDATE: useParams must destructure BOTH userId AND id
+  // THE KEY UPDATE: useParams for BOTH id and userId
   const { id, userId } = useParams();
   const [system, setSystem] = useState(null);
   const [loading, setLoading] = useState(true);
   const db = getFirestore();
 
-  // This function allows more forgiving key matching
+  // 🔹 Helper to get value with flexible key matching
   const getValue = (data, key) => {
     if (data[key]) return data[key];
+    // Try variations (handles extra spaces or ampersand spacing)
     const altKey = Object.keys(data).find(
       (k) => k.replace(/\s|&/g, "").toLowerCase() === key.replace(/\s|&/g, "").toLowerCase()
     );
@@ -93,7 +93,7 @@ const SystemPage = () => {
   useEffect(() => {
     const fetchSystem = async () => {
       try {
-        // THE KEY UPDATE: fetch from users/{userId}/files/{id}
+        // THE KEY FIRESTORE PATH UPDATE:
         const docRef = doc(db, "users", userId, "files", id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
@@ -104,6 +104,7 @@ const SystemPage = () => {
           setSystem({ error: "System not found" });
         }
       } catch (err) {
+        console.error("Error fetching system:", err);
         setSystem({ error: "Failed to fetch system details" });
       } finally {
         setLoading(false);
