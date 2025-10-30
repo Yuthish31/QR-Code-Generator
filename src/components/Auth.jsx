@@ -6,12 +6,11 @@ import {
   updateProfile,
   sendEmailVerification,
   sendPasswordResetEmail,
-  setPersistence,
-  browserLocalPersistence,
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { app } from "./firebaseConfig";
+import Swal from "sweetalert2";
 
 const styles = {
   container: {
@@ -77,70 +76,45 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  // Verify email status from Firebase backend
-  const verifyEmailStatusFromBackend = async (idToken) => {
-    try {
-      const apiKey = "AIzaSyBInzBlOiZvACXVAOpIjs6eG1ruSi0Mkls"; // your Firebase project's web API key
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken }),
-        }
-      );
-      const data = await response.json();
-      return data.users?.[0]?.emailVerified || false;
-    } catch (err) {
-      console.error("Error verifying email from backend:", err);
-      return false;
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (forgotMode) {
       if (!email.trim()) {
-        alert("Please enter your email");
+        Swal.fire("Missing Info", "Please enter your email", "warning");
         return;
       }
       try {
         await sendPasswordResetEmail(auth, email);
-        alert("Reset email sent. Check your inbox.");
+        Swal.fire("Email Sent", "Password reset email sent. Check your inbox.", "success");
         setForgotMode(false);
         setEmail("");
       } catch (err) {
-        alert(err.message);
+        Swal.fire("Error", err.message, "error");
       }
       return;
     }
 
-    try {
-      // Keep user logged in persistently
-      await setPersistence(auth, browserLocalPersistence);
-
-      if (isLogin) {
-        // ---------- LOGIN ----------
+    if (isLogin) {
+      // LOGIN
+      try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
+        await user.reload();
 
-        // Force refresh token
-        await user.getIdToken(true);
-        const idToken = await user.getIdToken();
-
-        // ✅ Check from backend (always up-to-date)
-        const isEmailVerified = await verifyEmailStatusFromBackend(idToken);
-
-        if (!isEmailVerified) {
-          alert("Please verify your email first via the link sent to your inbox.");
+        if (!user.emailVerified) {
+          Swal.fire({
+            icon: "warning",
+            title: "Email Not Verified",
+            text: "Please verify your email before logging in.",
+            footer: '<b>Check your inbox or spam folder for the verification link.</b>',
+          });
           return;
         }
 
-        // ✅ Fetch Firestore data
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (!userDoc.exists()) {
-          alert("User data missing from server; please register again.");
+          Swal.fire("User Data Missing", "Please register again.", "error");
           return;
         }
 
@@ -148,19 +122,29 @@ const Auth = () => {
         localStorage.setItem("username", userData.name || "User");
         localStorage.setItem("uid", user.uid);
 
-        alert(`Welcome back, ${userData.name || "User"}!`);
-        navigate("/dashboard");
-      } else {
-        // ---------- REGISTER ----------
-        if (!name.trim()) {
-          alert("Please enter your full name.");
-          return;
-        }
-        if (!email.trim() || !password) {
-          alert("Please enter email and password.");
-          return;
-        }
+        Swal.fire({
+          icon: "success",
+          title: `Welcome back, ${userData.name || "User"}!`,
+          showConfirmButton: false,
+          timer: 1500,
+        });
 
+        navigate("/dashboard");
+      } catch (err) {
+        Swal.fire("Login Failed", err.message, "error");
+      }
+    } else {
+      // REGISTER
+      if (!name.trim()) {
+        Swal.fire("Missing Info", "Please enter your full name.", "warning");
+        return;
+      }
+      if (!email.trim() || !password) {
+        Swal.fire("Missing Info", "Please enter email and password.", "warning");
+        return;
+      }
+
+      try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
@@ -173,11 +157,17 @@ const Auth = () => {
         });
 
         await sendEmailVerification(user);
-        alert("Registration successful! Please verify your email before logging in.");
+
+        Swal.fire({
+          icon: "success",
+          title: "Registration Successful!",
+          text: "Please verify your email before logging in.",
+        });
+
         setIsLogin(true);
+      } catch (err) {
+        Swal.fire("Error", err.message, "error");
       }
-    } catch (err) {
-      alert(err.message);
     }
   };
 
