@@ -1,215 +1,211 @@
 import React, { useEffect, useState } from "react";
+import { getAuth } from "firebase/auth";
 import {
   getFirestore,
   collection,
   getDocs,
+  query,
   doc,
-  updateDoc,
+  addDoc,
   deleteDoc,
-  setDoc,
 } from "firebase/firestore";
-import {
-  getAuth,
-  createUserWithEmailAndPassword,
-  updatePassword,
-} from "firebase/auth";
-import { app } from "./firebaseConfig";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import Swal from "sweetalert2";
+import { app } from "../firebase";
 
 const db = getFirestore(app);
+const storage = getStorage(app);
 const auth = getAuth(app);
-
-const styles = {
-  container: {
-    padding: "30px",
-    minHeight: "100vh",
-    background: "linear-gradient(133deg, #bec8ff 0%, #e8ecfa 100%)",
-  },
-  card: {
-    background: "#fff",
-    padding: "25px",
-    borderRadius: "16px",
-    boxShadow: "0 4px 18px rgba(0,0,0,0.08)",
-    marginBottom: "25px",
-  },
-  input: {
-    padding: "8px 10px",
-    margin: "5px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
-  },
-  button: {
-    padding: "8px 16px",
-    margin: "5px",
-    borderRadius: "8px",
-    background: "#4e3cc9",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer",
-  },
-  heading: {
-    color: "#32209f",
-    fontWeight: 800,
-    marginBottom: "10px",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-  },
-  th: {
-    background: "#d6d7ff",
-    padding: "10px",
-  },
-  td: {
-    borderBottom: "1px solid #ddd",
-    padding: "10px",
-  },
-};
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
-  const [newUser, setNewUser] = useState({ name: "", email: "", password: "" });
-  const [loading, setLoading] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [userFiles, setUserFiles] = useState([]);
+  const [fileToUpload, setFileToUpload] = useState(null);
 
-  // Fetch all users
-  const fetchUsers = async () => {
-    const usersCol = collection(db, "users");
-    const snapshot = await getDocs(usersCol);
-    const userList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    setUsers(userList);
-  };
-
+  // Fetch all users (admin only)
   useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser || currentUser.email !== "admin@sys.com") return;
+
+        const q = query(collection(db, "users"));
+        const snapshot = await getDocs(q);
+        const userList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setUsers(userList);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        Swal.fire("Error", "Failed to load user data", "error");
+      }
+    };
+
     fetchUsers();
   }, []);
 
-  // Create user
-  const handleCreateUser = async () => {
-    if (!newUser.name || !newUser.email || !newUser.password) {
-      alert("Please fill all fields");
+  // Fetch files for a selected user
+  const fetchFilesForUser = async (userId) => {
+    try {
+      setSelectedUserId(userId);
+      const q = query(collection(db, `users/${userId}/files`));
+      const snapshot = await getDocs(q);
+      const files = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setUserFiles(files);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      Swal.fire("Error", "Could not load files", "error");
+    }
+  };
+
+  // Admin upload file for a user
+  const handleFileUpload = async () => {
+    if (!fileToUpload || !selectedUserId) {
+      Swal.fire("Missing Info", "Select a file and user first", "warning");
       return;
     }
+
     try {
-      setLoading(true);
-      const userCred = await createUserWithEmailAndPassword(
-        auth,
-        newUser.email,
-        newUser.password
-      );
-      await setDoc(doc(db, "users", userCred.user.uid), {
-        uid: userCred.user.uid,
-        name: newUser.name,
-        email: newUser.email,
-        role: "user",
-        createdAt: new Date().toISOString(),
+      const fileRef = ref(storage, `adminUploads/${selectedUserId}/${fileToUpload.name}`);
+      await uploadBytes(fileRef, fileToUpload);
+      const url = await getDownloadURL(fileRef);
+
+      await addDoc(collection(db, `users/${selectedUserId}/files`), {
+        fileName: fileToUpload.name,
+        fileURL: url,
+        uploadedAt: new Date().toISOString(),
       });
-      alert("User created successfully!");
-      setNewUser({ name: "", email: "", password: "" });
-      fetchUsers();
+
+      Swal.fire("Uploaded!", "File uploaded successfully", "success");
+      fetchFilesForUser(selectedUserId);
+      setFileToUpload(null);
     } catch (error) {
-      alert(error.message);
-    } finally {
-      setLoading(false);
+      console.error("Error uploading file:", error);
+      Swal.fire("Error", "File upload failed", "error");
     }
   };
 
-  // Update user
-  const handleUpdateUser = async (userId, field, value) => {
+  // Delete user file
+  const handleDeleteFile = async (userId, fileId, fileName) => {
     try {
-      await updateDoc(doc(db, "users", userId), { [field]: value });
-      alert("User updated!");
-      fetchUsers();
-    } catch (error) {
-      alert(error.message);
-    }
-  };
+      await deleteDoc(doc(db, `users/${userId}/files/${fileId}`));
 
-  // Delete user
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm("Are you sure to delete this user?")) {
-      await deleteDoc(doc(db, "users", userId));
-      alert("User deleted.");
-      fetchUsers();
+      // Delete from storage too
+      const fileRef = ref(storage, `adminUploads/${userId}/${fileName}`);
+      await deleteObject(fileRef);
+
+      Swal.fire("Deleted!", "File removed successfully", "success");
+      fetchFilesForUser(userId);
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      Swal.fire("Error", "Could not delete file", "error");
     }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.heading}>Admin Dashboard</h2>
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-purple-100 p-8">
+      <h1 className="text-center text-3xl font-bold text-purple-800 mb-6">
+        Admin Dashboard — File Management
+      </h1>
 
-        <h3>Create User</h3>
-        <input
-          style={styles.input}
-          type="text"
-          placeholder="Full Name"
-          value={newUser.name}
-          onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-        />
-        <input
-          style={styles.input}
-          type="email"
-          placeholder="Email"
-          value={newUser.email}
-          onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-        />
-        <input
-          style={styles.input}
-          type="password"
-          placeholder="Password"
-          value={newUser.password}
-          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-        />
-        <button style={styles.button} onClick={handleCreateUser} disabled={loading}>
-          {loading ? "Creating..." : "Create User"}
-        </button>
-      </div>
-
-      <div style={styles.card}>
-        <h3 style={styles.heading}>All Users</h3>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Name</th>
-              <th style={styles.th}>Email</th>
-              <th style={styles.th}>Role</th>
-              <th style={styles.th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td style={styles.td}>
-                  <input
-                    style={styles.input}
-                    value={u.name}
-                    onChange={(e) =>
-                      handleUpdateUser(u.id, "name", e.target.value)
-                    }
-                  />
-                </td>
-                <td style={styles.td}>
-                  <input
-                    style={styles.input}
-                    value={u.email}
-                    onChange={(e) =>
-                      handleUpdateUser(u.id, "email", e.target.value)
-                    }
-                  />
-                </td>
-                <td style={styles.td}>{u.role || "user"}</td>
-                <td style={styles.td}>
-                  <button
-                    style={styles.button}
-                    onClick={() => handleDeleteUser(u.id)}
-                  >
-                    Delete
-                  </button>
-                </td>
+      <div className="bg-white shadow-xl rounded-2xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">All Users</h2>
+        {users.length === 0 ? (
+          <p>No users found.</p>
+        ) : (
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-purple-200 text-purple-900">
+                <th className="p-2">Name</th>
+                <th className="p-2">Email</th>
+                <th className="p-2 text-center">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id} className="border-b hover:bg-purple-50">
+                  <td className="p-2">{user.name || "Unnamed"}</td>
+                  <td className="p-2">{user.email}</td>
+                  <td className="p-2 text-center">
+                    <button
+                      className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded"
+                      onClick={() => fetchFilesForUser(user.id)}
+                    >
+                      View Files
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      {/* File management section */}
+      {selectedUserId && (
+        <div className="bg-white shadow-lg rounded-2xl p-6">
+          <h2 className="text-xl font-semibold mb-4 text-purple-800">
+            Manage Files for: {selectedUserId}
+          </h2>
+
+          <div className="flex items-center gap-4 mb-6">
+            <input
+              type="file"
+              onChange={(e) => setFileToUpload(e.target.files[0])}
+              className="border border-purple-300 rounded px-2 py-1"
+            />
+            <button
+              className="bg-green-500 hover:bg-green-600 text-white px-4 py-1 rounded"
+              onClick={handleFileUpload}
+            >
+              Upload File
+            </button>
+          </div>
+
+          {userFiles.length === 0 ? (
+            <p>No files found for this user.</p>
+          ) : (
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-purple-200 text-purple-900">
+                  <th className="p-2">File Name</th>
+                  <th className="p-2">Uploaded At</th>
+                  <th className="p-2 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {userFiles.map((file) => (
+                  <tr key={file.id} className="border-b hover:bg-purple-50">
+                    <td className="p-2">{file.fileName}</td>
+                    <td className="p-2">{new Date(file.uploadedAt).toLocaleString()}</td>
+                    <td className="p-2 text-center">
+                      <a
+                        href={file.fileURL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline mr-4"
+                      >
+                        View
+                      </a>
+                      <button
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                        onClick={() => handleDeleteFile(selectedUserId, file.id, file.fileName)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 };
