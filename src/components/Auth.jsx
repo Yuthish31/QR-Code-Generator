@@ -85,7 +85,7 @@ const Auth = () => {
     }
   }, [location]);
 
-  // ✅ Handle email verification link
+  // ✅ Handle email verification
   const handleEmailVerification = async (oobCode) => {
     try {
       await applyActionCode(auth, oobCode);
@@ -104,21 +104,19 @@ const Auth = () => {
     }
   };
 
-  // ✅ Handle form submit
+  // ✅ Handle submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (isLogin) {
-      // LOGIN FLOW
+      // LOGIN
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         await user.reload();
 
-        // Allow admin to log in without email verification
-        const isAdminEmail = user.email === "admin@sys.com";
-
-        if (!isAdminEmail && !user.emailVerified) {
+        // 🟣 Skip verification for admin
+        if (user.email !== "admin@sys.com" && !user.emailVerified) {
           Swal.fire({
             icon: "warning",
             title: "Email Not Verified",
@@ -128,32 +126,45 @@ const Auth = () => {
           return;
         }
 
-        // Fetch user data
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (!userDoc.exists()) {
-          Swal.fire("User Data Missing", "Please register again.", "error");
+        let userDoc = await getDoc(doc(db, "users", user.uid));
+
+        // 🟣 If admin logs in for first time, create record in Firestore
+        if (user.email === "admin@sys.com" && !userDoc.exists()) {
+          await setDoc(doc(db, "users", user.uid), {
+            uid: user.uid,
+            name: "Administrator",
+            email: user.email,
+            role: "admin",
+            createdAt: new Date().toISOString(),
+          });
+          userDoc = await getDoc(doc(db, "users", user.uid));
+        }
+
+        const userData = userDoc.exists() ? userDoc.data() : null;
+        if (!userData) {
+          Swal.fire("Error", "User record not found. Please register again.", "error");
           return;
         }
 
-        const userData = userDoc.data();
         localStorage.setItem("username", userData.name || "User");
         localStorage.setItem("uid", user.uid);
 
-        // ✅ Redirect based on role
-        if (userData.role === "admin" || isAdminEmail) {
+        // 🟣 Redirect based on role
+        if (userData.role === "admin") {
           Swal.fire({
             icon: "success",
-            title: `Welcome Admin!`,
-            showConfirmButton: false,
+            title: "Welcome Admin!",
+            text: "You have successfully logged in to the admin panel.",
             timer: 1500,
+            showConfirmButton: false,
           });
           navigate("/admin");
         } else {
           Swal.fire({
             icon: "success",
             title: `Welcome back, ${userData.name || "User"}!`,
-            showConfirmButton: false,
             timer: 1500,
+            showConfirmButton: false,
           });
           navigate("/dashboard");
         }
@@ -161,13 +172,9 @@ const Auth = () => {
         Swal.fire("Login Failed", err.message, "error");
       }
     } else {
-      // REGISTER FLOW
+      // REGISTER
       if (!name.trim()) {
         Swal.fire("Missing Info", "Please enter your full name.", "warning");
-        return;
-      }
-      if (!email.trim() || !password) {
-        Swal.fire("Missing Info", "Please enter email and password.", "warning");
         return;
       }
 
