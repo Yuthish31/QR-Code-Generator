@@ -23,7 +23,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import Swal from "sweetalert2";
-import { app } from "../firebase";
+import { app } from "./firebaseConfig";
 
 const db = getFirestore(app);
 const storage = getStorage(app);
