@@ -25,7 +25,7 @@ function AppRoutes({ excelData, setExcelData }) {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" />} />
       <Route path="/auth" element={<Auth />} />
-      <Route path="/forgot" element={<ForgotPassword />} />
+      <Route path="/forgotpass" element={<ForgotPassword />} />
       <Route
         path="/dashboard"
         element={

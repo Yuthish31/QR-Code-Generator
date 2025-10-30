@@ -249,7 +249,7 @@ const Auth = () => {
           </button>
         </form>
 
-        <div onClick={() => navigate("/forgot")} style={styles.toggle}>
+        <div onClick={() => navigate("/forgotpass")} style={styles.toggle}>
           Forgot Password?
         </div>
 
