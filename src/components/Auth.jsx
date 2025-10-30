@@ -70,6 +70,8 @@ const Auth = () => {
   const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
+
+  // Inputs
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -85,7 +87,7 @@ const Auth = () => {
     }
   }, [location]);
 
-  // ✅ Handle email verification
+  // ✅ Handle verification link
   const handleEmailVerification = async (oobCode) => {
     try {
       await applyActionCode(auth, oobCode);
@@ -104,18 +106,18 @@ const Auth = () => {
     }
   };
 
-  // ✅ Handle submit
+  // ✅ Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (isLogin) {
-      // LOGIN
+      // 🟣 LOGIN
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         await user.reload();
 
-        // 🟣 Skip verification for admin
+        // 🟣 Skip verification only for admin
         if (user.email !== "admin@sys.com" && !user.emailVerified) {
           Swal.fire({
             icon: "warning",
@@ -126,45 +128,47 @@ const Auth = () => {
           return;
         }
 
-        let userDoc = await getDoc(doc(db, "users", user.uid));
+        const userRef = doc(db, "users", user.uid);
+        let userDoc = await getDoc(userRef);
 
-        // 🟣 If admin logs in for first time, create record in Firestore
+        // 🟣 Auto-create admin record if missing
         if (user.email === "admin@sys.com" && !userDoc.exists()) {
-          await setDoc(doc(db, "users", user.uid), {
+          await setDoc(userRef, {
             uid: user.uid,
             name: "Administrator",
             email: user.email,
             role: "admin",
             createdAt: new Date().toISOString(),
           });
-          userDoc = await getDoc(doc(db, "users", user.uid));
+          userDoc = await getDoc(userRef);
         }
 
-        const userData = userDoc.exists() ? userDoc.data() : null;
-        if (!userData) {
-          Swal.fire("Error", "User record not found. Please register again.", "error");
+        // 🟢 Handle missing user data
+        if (!userDoc.exists()) {
+          Swal.fire("User Data Missing", "Please register again.", "error");
           return;
         }
 
+        const userData = userDoc.data();
         localStorage.setItem("username", userData.name || "User");
         localStorage.setItem("uid", user.uid);
 
-        // 🟣 Redirect based on role
+        // 🟣 Role-based redirect
         if (userData.role === "admin") {
           Swal.fire({
             icon: "success",
             title: "Welcome Admin!",
             text: "You have successfully logged in to the admin panel.",
-            timer: 1500,
             showConfirmButton: false,
+            timer: 1500,
           });
           navigate("/admin");
         } else {
           Swal.fire({
             icon: "success",
             title: `Welcome back, ${userData.name || "User"}!`,
-            timer: 1500,
             showConfirmButton: false,
+            timer: 1500,
           });
           navigate("/dashboard");
         }
@@ -172,9 +176,13 @@ const Auth = () => {
         Swal.fire("Login Failed", err.message, "error");
       }
     } else {
-      // REGISTER
+      // 🟢 REGISTER
       if (!name.trim()) {
         Swal.fire("Missing Info", "Please enter your full name.", "warning");
+        return;
+      }
+      if (!email.trim() || !password) {
+        Swal.fire("Missing Info", "Please enter email and password.", "warning");
         return;
       }
 
