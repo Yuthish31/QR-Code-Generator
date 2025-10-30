@@ -7,6 +7,7 @@ import Dashboard from "./components/Dashboard";
 import ManageUploads from "./components/ManageFiles";
 import ForgotPassword from "./components/ForgotPassword";
 import ResetPassword from "./components/ResetPassword";
+import AdminDashboard from "./components/AdminDashboard";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 function AppRoutes({ excelData, setExcelData }) {
@@ -31,6 +32,9 @@ function AppRoutes({ excelData, setExcelData }) {
       <Route path="/auth" element={<Auth />} />
       <Route path="/forgotpass" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+
+      {/* Admin User */}
+      <Route path="/admin" element={<AdminDashboard />} />
 
       {/* Protected Routes */}
       <Route

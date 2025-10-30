@@ -70,8 +70,6 @@ const Auth = () => {
   const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
-
-  // Inputs
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -87,7 +85,7 @@ const Auth = () => {
     }
   }, [location]);
 
-  // ✅ Handle verification link
+  // ✅ Handle email verification link
   const handleEmailVerification = async (oobCode) => {
     try {
       await applyActionCode(auth, oobCode);
@@ -106,18 +104,21 @@ const Auth = () => {
     }
   };
 
-  // ✅ Handle Submit
+  // ✅ Handle form submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (isLogin) {
-      // LOGIN
+      // LOGIN FLOW
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         await user.reload();
 
-        if (!user.emailVerified) {
+        // Allow admin to log in without email verification
+        const isAdminEmail = user.email === "admin@sys.com";
+
+        if (!isAdminEmail && !user.emailVerified) {
           Swal.fire({
             icon: "warning",
             title: "Email Not Verified",
@@ -127,6 +128,7 @@ const Auth = () => {
           return;
         }
 
+        // Fetch user data
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (!userDoc.exists()) {
           Swal.fire("User Data Missing", "Please register again.", "error");
@@ -137,19 +139,29 @@ const Auth = () => {
         localStorage.setItem("username", userData.name || "User");
         localStorage.setItem("uid", user.uid);
 
-        Swal.fire({
-          icon: "success",
-          title: `Welcome back, ${userData.name || "User"}!`,
-          showConfirmButton: false,
-          timer: 1500,
-        });
-
-        navigate("/dashboard");
+        // ✅ Redirect based on role
+        if (userData.role === "admin" || isAdminEmail) {
+          Swal.fire({
+            icon: "success",
+            title: `Welcome Admin!`,
+            showConfirmButton: false,
+            timer: 1500,
+          });
+          navigate("/admin");
+        } else {
+          Swal.fire({
+            icon: "success",
+            title: `Welcome back, ${userData.name || "User"}!`,
+            showConfirmButton: false,
+            timer: 1500,
+          });
+          navigate("/dashboard");
+        }
       } catch (err) {
         Swal.fire("Login Failed", err.message, "error");
       }
     } else {
-      // REGISTER
+      // REGISTER FLOW
       if (!name.trim()) {
         Swal.fire("Missing Info", "Please enter your full name.", "warning");
         return;
@@ -168,6 +180,7 @@ const Auth = () => {
           uid: user.uid,
           name: name.trim(),
           email: user.email,
+          role: "user",
           createdAt: new Date().toISOString(),
         });
 
