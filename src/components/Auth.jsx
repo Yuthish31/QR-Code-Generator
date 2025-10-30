@@ -249,8 +249,8 @@ const Auth = () => {
           </button>
         </form>
 
-        <div onClick={() => setForgotMode(!forgotMode)} style={styles.toggle}>
-          {forgotMode ? "Back to Login" : "Forgot Password?"}
+        <div onClick={() => navigate("/forgot")} style={styles.toggle}>
+          Forgot Password?
         </div>
 
         {!forgotMode && (

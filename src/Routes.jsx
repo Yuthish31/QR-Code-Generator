@@ -6,6 +6,7 @@ import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
 import ManageUploads from "./components/ManageFiles";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import ForgotPassword from "./components/ForgotPassword";
 
 function AppRoutes({ excelData, setExcelData }) {
   const [user, setUser] = useState(null);
@@ -24,6 +25,7 @@ function AppRoutes({ excelData, setExcelData }) {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/forgot" element={<ForgotPassword />} />
       <Route
         path="/dashboard"
         element={
