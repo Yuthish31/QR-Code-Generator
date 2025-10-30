@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   getAuth,
   createUserWithEmailAndPassword,
@@ -6,9 +6,10 @@ import {
   updateProfile,
   sendEmailVerification,
   sendPasswordResetEmail,
+  applyActionCode,
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { app } from "./firebaseConfig";
 import Swal from "sweetalert2";
 
@@ -67,6 +68,7 @@ const Auth = () => {
   const auth = getAuth(app);
   const db = getFirestore(app);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
   const [forgotMode, setForgotMode] = useState(false);
@@ -76,6 +78,37 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  // ✅ Detect verification link
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const mode = queryParams.get("mode");
+    const oobCode = queryParams.get("oobCode");
+
+    if (mode === "verifyEmail" && oobCode) {
+      handleEmailVerification(oobCode);
+    }
+  }, [location]);
+
+  // ✅ Handle verification link
+  const handleEmailVerification = async (oobCode) => {
+    try {
+      await applyActionCode(auth, oobCode);
+      Swal.fire({
+        icon: "success",
+        title: "Email Verified!",
+        text: "Your email has been successfully verified. You can now log in normally.",
+        confirmButtonText: "OK",
+      });
+    } catch (err) {
+      Swal.fire({
+        icon: "error",
+        title: "Verification Failed",
+        text: err.message,
+      });
+    }
+  };
+
+  // ✅ Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -102,6 +135,7 @@ const Auth = () => {
         const user = userCredential.user;
         await user.reload();
 
+        // ✅ Re-check emailVerified
         if (!user.emailVerified) {
           Swal.fire({
             icon: "warning",
