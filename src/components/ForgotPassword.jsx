@@ -75,7 +75,7 @@ const ForgotPassword = () => {
         title: "Email Sent!",
         text: "Password reset email has been sent. Please check your inbox or spam folder.",
       }).then(() => {
-        navigate("/auth"); // redirect back to login page
+        navigate("/auth");
       });
     } catch (err) {
       Swal.fire("Error", err.message, "error");

@@ -5,7 +5,6 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   sendEmailVerification,
-  sendPasswordResetEmail,
   applyActionCode,
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
@@ -71,7 +70,6 @@ const Auth = () => {
   const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
-  const [forgotMode, setForgotMode] = useState(false);
 
   // Inputs
   const [email, setEmail] = useState("");
@@ -112,22 +110,6 @@ const Auth = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (forgotMode) {
-      if (!email.trim()) {
-        Swal.fire("Missing Info", "Please enter your email", "warning");
-        return;
-      }
-      try {
-        await sendPasswordResetEmail(auth, email);
-        Swal.fire("Email Sent", "Password reset email sent. Check your inbox.", "success");
-        setForgotMode(false);
-        setEmail("");
-      } catch (err) {
-        Swal.fire("Error", err.message, "error");
-      }
-      return;
-    }
-
     if (isLogin) {
       // LOGIN
       try {
@@ -135,7 +117,6 @@ const Auth = () => {
         const user = userCredential.user;
         await user.reload();
 
-        // ✅ Re-check emailVerified
         if (!user.emailVerified) {
           Swal.fire({
             icon: "warning",
@@ -209,11 +190,11 @@ const Auth = () => {
     <div style={styles.container}>
       <div style={styles.card}>
         <h2 style={{ color: "#32209f", fontWeight: 900, marginBottom: "18px" }}>
-          {forgotMode ? "Forgot Password" : isLogin ? "Login" : "Register"}
+          {isLogin ? "Login" : "Register"}
         </h2>
 
         <form onSubmit={handleSubmit}>
-          {!isLogin && !forgotMode && (
+          {!isLogin && (
             <input
               style={styles.input}
               type="text"
@@ -233,19 +214,17 @@ const Auth = () => {
             required
           />
 
-          {!forgotMode && (
-            <input
-              style={styles.input}
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required={!forgotMode}
-            />
-          )}
+          <input
+            style={styles.input}
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
 
           <button style={styles.button} type="submit">
-            {forgotMode ? "Send Reset Email" : isLogin ? "Login" : "Register"}
+            {isLogin ? "Login" : "Register"}
           </button>
         </form>
 
@@ -253,11 +232,9 @@ const Auth = () => {
           Forgot Password?
         </div>
 
-        {!forgotMode && (
-          <div onClick={() => setIsLogin(!isLogin)} style={styles.toggle}>
-            {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
-          </div>
-        )}
+        <div onClick={() => setIsLogin(!isLogin)} style={styles.toggle}>
+          {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
+        </div>
       </div>
     </div>
   );
