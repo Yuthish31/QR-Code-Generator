@@ -6,6 +6,7 @@ import {
   updateProfile,
   sendEmailVerification,
   applyActionCode,
+  fetchSignInMethodsForEmail,
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -70,32 +71,25 @@ const Auth = () => {
   const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
-
-  // Inputs
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  // ✅ Detect verification link
+  // ✅ Handle email verification links
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const mode = queryParams.get("mode");
     const oobCode = queryParams.get("oobCode");
-
-    if (mode === "verifyEmail" && oobCode) {
-      handleEmailVerification(oobCode);
-    }
+    if (mode === "verifyEmail" && oobCode) handleEmailVerification(oobCode);
   }, [location]);
 
-  // ✅ Handle verification link
   const handleEmailVerification = async (oobCode) => {
     try {
       await applyActionCode(auth, oobCode);
       Swal.fire({
         icon: "success",
         title: "Email Verified!",
-        text: "Your email has been successfully verified. You can now log in normally.",
-        confirmButtonText: "OK",
+        text: "Your email has been verified. You can now log in.",
       });
     } catch (err) {
       Swal.fire({
@@ -106,24 +100,46 @@ const Auth = () => {
     }
   };
 
+  // ✅ Auto-create admin in Firebase Auth if missing
+  const ensureAdminExists = async () => {
+    const adminEmail = "admin@sys.com";
+    const adminPassword = "Admin@123"; // You can change this password
+    const methods = await fetchSignInMethodsForEmail(auth, adminEmail);
+
+    if (methods.length === 0) {
+      const cred = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+      const adminUser = cred.user;
+      await setDoc(doc(db, "users", adminUser.uid), {
+        uid: adminUser.uid,
+        name: "Administrator",
+        email: adminEmail,
+        role: "admin",
+        createdAt: new Date().toISOString(),
+      });
+      console.log("Admin account created automatically:", adminEmail);
+    }
+  };
+
+  useEffect(() => {
+    ensureAdminExists();
+  }, []);
+
   // ✅ Handle Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (isLogin) {
-      // 🟣 LOGIN
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         await user.reload();
 
-        // 🟣 Skip verification only for admin
         if (user.email !== "admin@sys.com" && !user.emailVerified) {
           Swal.fire({
             icon: "warning",
             title: "Email Not Verified",
             text: "Please verify your email before logging in.",
-            footer: '<b>Check your inbox or spam folder for the verification link.</b>',
+            footer: "<b>Check your inbox or spam folder for the link.</b>",
           });
           return;
         }
@@ -131,7 +147,7 @@ const Auth = () => {
         const userRef = doc(db, "users", user.uid);
         let userDoc = await getDoc(userRef);
 
-        // 🟣 Auto-create admin record if missing
+        // If admin logs in and no record yet
         if (user.email === "admin@sys.com" && !userDoc.exists()) {
           await setDoc(userRef, {
             uid: user.uid,
@@ -143,7 +159,6 @@ const Auth = () => {
           userDoc = await getDoc(userRef);
         }
 
-        // 🟢 Handle missing user data
         if (!userDoc.exists()) {
           Swal.fire("User Data Missing", "Please register again.", "error");
           return;
@@ -153,12 +168,11 @@ const Auth = () => {
         localStorage.setItem("username", userData.name || "User");
         localStorage.setItem("uid", user.uid);
 
-        // 🟣 Role-based redirect
         if (userData.role === "admin") {
           Swal.fire({
             icon: "success",
             title: "Welcome Admin!",
-            text: "You have successfully logged in to the admin panel.",
+            text: "You have successfully logged in.",
             showConfirmButton: false,
             timer: 1500,
           });
@@ -181,10 +195,6 @@ const Auth = () => {
         Swal.fire("Missing Info", "Please enter your full name.", "warning");
         return;
       }
-      if (!email.trim() || !password) {
-        Swal.fire("Missing Info", "Please enter email and password.", "warning");
-        return;
-      }
 
       try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -200,7 +210,6 @@ const Auth = () => {
         });
 
         await sendEmailVerification(user);
-
         Swal.fire({
           icon: "success",
           title: "Registration Successful!",
@@ -261,7 +270,9 @@ const Auth = () => {
         </div>
 
         <div onClick={() => setIsLogin(!isLogin)} style={styles.toggle}>
-          {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
+          {isLogin
+            ? "Don't have an account? Register"
+            : "Already have an account? Login"}
         </div>
       </div>
     </div>
